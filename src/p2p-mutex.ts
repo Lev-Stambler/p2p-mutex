@@ -43,11 +43,13 @@ export namespace P2PMutex {
       })
     )
 
+    console.log((await pipe(peerSockets[0], collect)).toString())
+
     await Promise.all(
       peerSockets.map(async socket => {
         console.log(`Value: ${(await pipe(socket, collect)).toString()}`)
-        await connection.initListener.close()
       })
     )
+    await connection.initListener.close()
   }
 }

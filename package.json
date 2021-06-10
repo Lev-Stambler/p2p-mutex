@@ -22,7 +22,7 @@
     "star-signal": "node src/sig-server/bin.js",
     "lint": "npx aegir lint",
     "build": "npx aegir build --ts-repo",
-    "test": "npx aegir test -t node -t browser --ts-repo",
+    "test": "npx aegir test -t node -t browser --ts-repo --timeout=15000",
     "test:node": "npx aegir test -t node",
     "test:browser": "npx aegir test -t browser --ts-repo --timeout=15000",
     "test:dns": "WEBRTC_STAR_REMOTE_SIGNAL_DNS=1 npx aegir test -t browser",
