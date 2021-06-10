@@ -86,6 +86,7 @@
     "wrtc": "^0.4.7"
   },
   "dependencies": {
+    "@thi.ng/vclock": "^0.1.10",
     "libp2p-webrtc-star": "^0.22.3"
   }
 }
