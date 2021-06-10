@@ -1,5 +1,6 @@
 // @ts-ignore
 import WStar from 'libp2p-webrtc-star'
+import * as vclock from '@thi.ng/vclock'
 import { Multiaddr, multiaddr } from 'multiaddr'
 import pipe from 'it-pipe'
 import { collect, filter } from 'streaming-iterables'
@@ -59,7 +60,14 @@ export namespace P2PMutex {
       console.log(`Value: ${(await pipe(socket, collect)).toString()}`)
     )
     await connection.initListener.close()
-    peerSockets.map(socket => spinWait(socket))
+    peerSockets.map(socket =>
+      spinWait(socket, {
+        AQUIRE_LOCK: {
+          fn: onLockAcquireMsg,
+          blocking: true
+        }
+      })
+    )
     return { ...connection, _sockets: peerSockets }
   }
 
@@ -68,10 +76,11 @@ export namespace P2PMutex {
       throw 'Sockets must be defined'
     }
     const msg: AcquireLockMsg = {
+      type: 'ACQUIRE_LOCK',
       timestamp: clock[MAIN_CLOCK_ID],
       owner: connection.localAddress.toString()
     }
-    await forAllSockets(connection._sockets, socket => pipe([JSON.stringify(msg)]))
+    await forAllSockets(connection._sockets, socket => pipe([JSON.stringify(msg)], socket))
   }
 
   export async function releaseLock(connection: P2PMutexConn) {
@@ -81,6 +90,10 @@ export namespace P2PMutex {
   }
 }
 
+async function onLockAcquireMsg(msg: AcquireLockMsg) {
+  vclock.inc(clock, MAIN_CLOCK_ID)
+}
+
 async function forAllSockets<T>(sockets: any[], fn: (socket: any) => Promise<T>): Promise<T[]> {
   return await Promise.all(sockets.map(fn))
 }
@@ -88,18 +101,15 @@ async function forAllSockets<T>(sockets: any[], fn: (socket: any) => Promise<T>)
 // TODO: add type verification
 async function spinWait(
   socket: any,
-  onRecvs: { [type: string]: { fn: (input: any & Msg) => any, blocking: boolean}},
+  onRecvs: { [type: string]: { fn: (input: any & Msg) => any; blocking: boolean } }
 ) {
   while (true) {
-    const input = JSON.parse(await pipe(socket, collect).toString()) 
+    const input = JSON.parse(await pipe(socket, collect).toString())
     const type = (input as Msg).type
-    const isBlocking = onRecvs[type].blocking
-    if (isBlocking)
-      await onRecvs[type].fn(input)
-    else
-      onRecvs[type].fn(input)
-    // If ordered is true, wait for the handler to finish before collecting the next message
-    // if (ordered) await onRecv(input)
-    // else onRecv(input)
+    if (onRecvs[type]) {
+      const isBlocking = onRecvs[type].blocking
+      if (isBlocking) await onRecvs[type].fn(input)
+      else onRecvs[type].fn(input)
+    }
   }
 }

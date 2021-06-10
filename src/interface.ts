@@ -18,10 +18,13 @@ export interface P2PConnectPeersOpts {
 }
 
 export interface AcquireLockMsg extends Msg {
+  type: 'ACQUIRE_LOCK'
   timestamp: number
   owner: MultiaddrInput
 }
 
 export interface Msg {
-  type: string
+  type: MsgTypes
 }
+
+export type MsgTypes = 'ACQUIRE_LOCK'

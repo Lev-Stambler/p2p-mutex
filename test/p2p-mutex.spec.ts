@@ -35,14 +35,16 @@ describe('Dummy test', async function() {
       )
     )
     try {
-      await Promise.all(
+      const newConns = await Promise.all(
         conns.map(async (conn, i) => {
           const _peerAddresses = [...peerAddresses]
           // delete self
           _peerAddresses.splice(i, 1)
-          await P2PMutex.connectPeers(conn, { peerAddresses: _peerAddresses })
+          const conns = await P2PMutex.connectPeers(conn, { peerAddresses: _peerAddresses })
+          return conns
         })
       )
+      await P2PMutex.acquireLock(newConns[0])
     } catch (error) {
       console.log('Error with connecting')
       throw error
