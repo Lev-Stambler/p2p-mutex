@@ -4,27 +4,18 @@ import { multiaddr } from 'multiaddr'
 import pipe from 'it-pipe'
 import * as PeerId from 'peer-id'
 import { collect } from 'streaming-iterables'
-
-const addr = multiaddr(
-  '/ip4/188.166.203.82/tcp/20000/wss/p2p-webrtc-star/p2p/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSooo2a'
-)
+import { P2PConnectPeersOpts, P2PMutexConn, P2PMutexInitOpts } from './interface'
 
 export namespace P2PMutex {
-  export async function connect() {
-    // This is another peer?
-    // const localPeer = await PeerId.create({
-    // })
-    const localPeer = await PeerId.create()
-
-    console.log("AAAAA")
-    return
-    console.log(localPeer.toJSON())
+  export async function init(opts: P2PMutexInitOpts, wrtc?: any): Promise<P2PMutexConn> {
+    const connectOptsPartial = wrtc ? { wrtc } : {}
     // TODO: does this work?
     const ws = new WStar({
+      ...connectOptsPartial,
       upgrader: {
         upgradeInbound: (maConn: any) => maConn,
         upgradeOutbound: (maConn: any) => maConn,
-        localPeer
+        localPeer: opts.localPeer
       }
     })
 
@@ -33,15 +24,30 @@ export namespace P2PMutex {
       pipe(['hello'], socket)
     })
 
-    await listener.listen(addr)
+    await listener.listen(opts.localAddress)
     console.log('listening')
+    return {
+      initListener: listener,
+      _ws: ws
+    }
+  }
 
-    const socket = await ws.dial(addr)
-    const values = await pipe(socket, collect)
+  export async function connectPeers(
+    connection: P2PMutexConn,
+    opts: P2PConnectPeersOpts
+  ): Promise<void> {
+    const peerSockets = await Promise.all(
+      opts.peerAddresses.map(async peerAddr => {
+        const socket = await connection._ws.dial(multiaddr(peerAddr))
+        return socket
+      })
+    )
 
-    console.log(`Value: ${values.toString()}`)
-
-    // Close connection after reading
-    await listener.close()
+    await Promise.all(
+      peerSockets.map(async socket => {
+        console.log(`Value: ${(await pipe(socket, collect)).toString()}`)
+        await connection.initListener.close()
+      })
+    )
   }
 }
