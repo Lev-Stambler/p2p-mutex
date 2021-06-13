@@ -1,15 +1,17 @@
+import * as libp2p from 'libp2p'
+import { Libp2p } from 'libp2p/src/connection-manager'
+import { MuxedStream } from 'libp2p/src/upgrader'
 import { Multiaddr, MultiaddrInput } from 'multiaddr'
 import PeerId from 'peer-id'
 
 export interface P2PMutexConn {
-  initListener: any
-  _ws: any
-  localAddress: Multiaddr
-  _sockets?: any[]
+  node: Libp2p
+  peerConnections?: libp2p.Connection[]
+  streams?: MuxedStream[]
 }
 
 export interface P2PMutexInitOpts {
-  localAddress: MultiaddrInput
+  localAddress: string
   localPeer: PeerId
 }
 

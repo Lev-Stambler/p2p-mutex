@@ -19,10 +19,10 @@
     "node": ">=6.0.0"
   },
   "scripts": {
-    "star-signal": "node src/sig-server/bin.js",
+    "signal-server": "npx star-signal --port=13579 --host=127.0.0.1",
     "lint": "npx aegir lint",
     "build": "npx aegir build --ts-repo",
-    "test": "npx aegir test -t node -t browser --ts-repo --timeout=15000",
+    "test": "npx aegir test -t node -t browser --ts-repo --timeout=25000",
     "test:node": "npx aegir test -t node",
     "test:browser": "npx aegir test -t browser --ts-repo --timeout=15000",
     "test:dns": "WEBRTC_STAR_REMOTE_SIGNAL_DNS=1 npx aegir test -t browser",
@@ -66,6 +66,7 @@
     "cross-env": "^5.2.0",
     "cz-conventional-changelog": "^2.1.0",
     "husky": "^1.0.1",
+    "libp2p-bootstrap": "^0.12.3",
     "lint-staged": "^8.0.0",
     "lodash.camelcase": "^4.3.0",
     "prettier": "^1.14.3",
@@ -87,6 +88,14 @@
   },
   "dependencies": {
     "@thi.ng/vclock": "^0.1.10",
-    "libp2p-webrtc-star": "^0.22.3"
+    "Buffer": "0.0.0",
+    "libp2p": "^0.31.6",
+    "libp2p-delegated-peer-routing": "^0.9.0",
+    "libp2p-gossipsub": "^0.10.0",
+    "libp2p-mplex": "^0.10.3",
+    "libp2p-noise": "^3.0.0",
+    "libp2p-webrtc-direct": "^0.6.0",
+    "libp2p-webrtc-star": "file:../../webrtc/js-libp2p-webrtc-star",
+    "libp2p-websockets": "^0.15.9"
   }
 }
