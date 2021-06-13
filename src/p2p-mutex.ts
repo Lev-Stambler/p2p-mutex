@@ -1,4 +1,4 @@
-// follow https://github.com/libp2p/js-libp2p/blob/master/examples/libp2p-in-the-browser/index.js
+// follow https://dev.to/moxystudio/kickoff-your-application-with-js-libp2p-4n8h
 // @ts-ignore
 import WStar from 'libp2p-webrtc-star'
 // @ts-ignore
@@ -13,21 +13,16 @@ import pipe from 'it-pipe'
 import { collect, filter, consume } from 'streaming-iterables'
 import {
   AcquireLockMsg,
+  EventFN,
   Msg,
   P2PConnectPeersOpts,
   P2PMutexConn,
-  P2PMutexInitOpts
+  P2PMutexInitOpts,
+  ReleaseLockMsg
 } from './interface'
-import { clock, MAIN_CLOCK_ID } from './total-order'
+import { MAIN_CLOCK_ID, newTotalOrder, QUEUE_CLOCK_ID } from './total-order'
 import Libp2p, { MuxedStream } from 'libp2p'
 import { P2PMutexProtocol } from './p2p-mutex-protocol'
-
-const onRecvs = {
-  AQUIRE_LOCK: {
-    fn: onLockAcquireMsg,
-    blocking: true
-  }
-}
 
 export namespace P2PMutex {
   /**
@@ -62,9 +57,10 @@ export namespace P2PMutex {
       }
     })
 
-    node.handle(P2PMutexProtocol.PROTOCOL, P2PMutexProtocol.handler)
+    const conn = { node, localPeer: opts.localPeer, totalOrderInst: newTotalOrder() }
+    node.handle(P2PMutexProtocol.PROTOCOL, P2PMutexProtocol.mkhandler(opts.localPeer, conn))
     await node.start()
-    return { node }
+    return conn
   }
 
   export async function connectPeers(
@@ -74,40 +70,63 @@ export namespace P2PMutex {
     const peerConns = await Promise.all(
       opts.peerAddresses.map(addr => connection.node.dial(multiaddr(addr)))
     )
-    const streams = await Promise.all(
-      peerConns.map(async peerConn => {
-        const { stream, protocol } = await peerConn.newStream([P2PMutexProtocol.PROTOCOL])
-        console.log(protocol)
-        return stream
-      })
-    )
-    return { ...connection, peerConnections: peerConns, streams }
+    return { ...connection, peerConnections: peerConns }
   }
 
-  export async function acquireLock(connection: P2PMutexConn) {
-    if (!connection.peerConnections && !connection.streams) {
-      throw 'Peer connections must be defined'
-    }
+  export async function acquireLock(connection: P2PMutexConn, fn: EventFN) {
+    checkConnection(connection)
+    const clock = connection.totalOrderInst.getClock()
+    const queuedTimestamp = clock[QUEUE_CLOCK_ID]
+    const clockQ = vclock.inc(clock, QUEUE_CLOCK_ID)
+    const clockNew = clockQ
+
+    connection.totalOrderInst.setClock(clockNew)
     const msg: AcquireLockMsg = {
       type: 'ACQUIRE_LOCK',
-      timestamp: clock[MAIN_CLOCK_ID],
-      owner: 'AAAA' //connection.localAddress.toString()
+      clock: clockNew,
+      peerId: connection.localPeer.toB58String(),
+      timestamp: queuedTimestamp
     }
-    // console.log(connection._sockets.length)
+    const streams = await getStreams(connection)
     await Promise.all(
-      (connection.streams || []).map(async stream => {
-        P2PMutexProtocol.send(JSON.stringify(msg), stream)
+      streams.map(async stream => {
+        await P2PMutexProtocol.send(JSON.stringify(msg), stream)
       })
     )
+    if (queuedTimestamp === clockNew[MAIN_CLOCK_ID]) {
+      fn()
+    } else
+      connection.totalOrderInst.addToEventQueue({
+        timestamp: queuedTimestamp,
+        fn,
+        peerId: connection.localPeer.toB58String()
+      })
   }
 
   export async function releaseLock(connection: P2PMutexConn) {
-    if (!connection.peerConnections) {
-      throw 'Sockets must be defined'
+    checkConnection(connection)
+    const streams = await getStreams(connection)
+    const msg: ReleaseLockMsg = {
+      type: 'RELEASE_LOCK',
+      clock: connection.totalOrderInst.getClock(),
+      owner: connection.localPeer.toB58String()
     }
+    await Promise.all(streams.map(stream => P2PMutexProtocol.send(JSON.stringify(msg), stream)))
   }
 }
 
-async function onLockAcquireMsg(msg: AcquireLockMsg) {
-  vclock.inc(clock, MAIN_CLOCK_ID)
+function checkConnection(conn: P2PMutexConn) {
+  if (!conn.peerConnections) {
+    throw 'Peer connections must be defined'
+  }
+  return true
+}
+
+async function getStreams(conn: P2PMutexConn) {
+  return await Promise.all(
+    (conn.peerConnections || []).map(async peerConn => {
+      const { stream, protocol } = await peerConn.newStream([P2PMutexProtocol.PROTOCOL])
+      return stream
+    })
+  )
 }

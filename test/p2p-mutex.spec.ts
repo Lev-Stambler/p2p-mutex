@@ -3,8 +3,10 @@ import { expect } from 'aegir/utils/chai'
 import PeerId from 'peer-id'
 import { multiaddr, MultiaddrInput } from 'multiaddr'
 import wrtc from 'wrtc'
+import { P2PMutexConn } from '../src/interface'
 
-async function createPeerIds(numbPeers = 5): Promise<PeerId[]> {
+const NUMB_PEERS = 4
+async function createPeerIds(numbPeers = NUMB_PEERS): Promise<PeerId[]> {
   const peers = await Promise.all([...Array(numbPeers).keys()].map(i => PeerId.create()))
   return peers
 }
@@ -21,9 +23,9 @@ describe('Dummy test', async function() {
   before(async () => {
     // Create 10 peers
 
-    peerGroups = await createPeerIds(2)
+    peerGroups = await createPeerIds(NUMB_PEERS)
     peerAddressGroups = peerGroups.map((peer, i) =>
-      multiaddr(`/ip4/127.0.0.1/tcp/13579/wss/p2p-webrtc-star/p2p/${peer.toB58String()}`)
+      multiaddr(`/ip4/127.0.0.1/tcp/13579/wss/p2p-webrtc-star/p2p/${peer.toString()}`)
     )
   })
 
@@ -51,15 +53,39 @@ describe('Dummy test', async function() {
           return conns
         })
       )
-      await new Promise<void>((res, rej) => setTimeout(() => res(), 1500))
-      await P2PMutex.acquireLock(newConns[0])
+      // await new Promise<void>((res, rej) => setTimeout(() => res(), 1500))
+      const unlockProms: Promise<void>[] = []
+      unlockProms.push((await acquireLockAndSleep(newConns[0], 400, 'Boy 0 msg 0'))())
+      unlockProms.push((await acquireLockAndSleep(newConns[1], 400, 'Boy 1 msg 0'))())
+      // unlockProms.push((await acquireLockAndSleep(newConns[2], 400, 'Boy 2 msg 0'))())
+      console.log('Sent all messages')
+      await Promise.all(unlockProms)
     } catch (error) {
       console.log('Error with connecting')
       throw error
     }
 
-    await new Promise<void>((res, rej) => setTimeout(() => res(), 1000))
-
     expect(true).equal(true)
   })
 })
+
+async function acquireLockAndSleep(
+  conn: P2PMutexConn,
+  timeout: number,
+  msg?: string
+): Promise<() => Promise<void>> {
+  return new Promise<() => Promise<void>>(async (res, rej) => {
+    await P2PMutex.acquireLock(conn, async () => {
+      res(
+        () =>
+          new Promise<void>(async (res, rej) => {
+            console.log('GOT LOCK with msg', msg)
+            await new Promise<void>((res, rej) => setTimeout(res, 200))
+            console.log('RELEASING LOCK with msg', msg)
+            await P2PMutex.releaseLock(conn)
+            res()
+          })
+      )
+    })
+  })
+}
